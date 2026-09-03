@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>残薬・端数計算ツール</title>
+  <style>
+    :root { --primary-color: #1e293b; --accent-color: #2563eb; --pharmacy-color: #ea580c; --patient-color: #16a34a; --reset-color: #dc2626; --bg-color: #f8fafc; --card-bg: #ffffff; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background-color: var(--bg-color); color: #0f172a; padding: 12px; max-width: 1000px; margin: 0 auto; }
+    header { background-color: var(--primary-color); color: white; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    header h1 { font-size: 1.15rem; font-weight: 700; }
+    .btn-reset { background-color: var(--reset-color); color: white; border: none; padding: 8px 16px; font-size: 0.95rem; font-weight: bold; border-radius: 6px; cursor: pointer; }
+    .card { background: var(--card-bg); border-radius: 8px; padding: 14px; margin-bottom: 12px; border: 1px solid #e2e8f0; }
+    .global-setting { display: flex; align-items: center; gap: 10px; background: #eff6ff; padding: 10px 14px; border-radius: 6px; border: 1px solid #bfdbfe; margin-bottom: 12px; }
+    .global-setting input { width: 70px; padding: 6px; font-size: 1.1rem; font-weight: bold; text-align: center; border: 2px solid var(--accent-color); border-radius: 6px; }
+    .table-container { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px 6px; text-align: center; }
+    th { background: #f1f5f9; font-weight: bold; }
+    th.input-th { background: #f0fdf4; color: #166534; }
+    th.output-th { background: #eff6ff; color: #1e40af; }
+    td input { width: 100%; padding: 8px 4px; font-size: 1rem; font-weight: bold; text-align: center; border: 1px solid #cbd5e1; border-radius: 4px; }
+    td.text-left input { text-align: left; padding-left: 8px; font-weight: normal; }
+    .res-text { font-weight: bold; font-size: 0.95rem; }
+    .res-dispense { color: var(--accent-color); font-size: 1rem; }
+    .res-patient { color: var(--patient-color); }
+    .res-pharmacy { color: var(--pharmacy-color); }
+    .btn-add { background-color: #2563eb; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+    .btn-del { background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    .btn-large-reset { background-color: var(--reset-color); color: white; border: none; padding: 12px 32px; font-size: 1.1rem; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>💊 残薬・端数計算ツール</h1>
+    <button class="btn-reset" onclick="resetAll()">次の方（クリア）</button>
+  </header>
+  <div class="card">
+    <div class="global-setting">
+      <label for="defaultDays"><b>一括 予定処方日数:</b></label>
+      <input type="text" id="defaultDays" value="14" oninput="applyDefaultDays()"> 日分
+    </div>
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>No.</th>
+            <th class="input-th">薬品名/メモ (任意)</th>
+            <th class="input-th">1日量(錠)</th>
+            <th class="input-th">持参残薬(錠)</th>
+            <th class="input-th">予定日数</th>
+            <th class="output-th">持参換算</th>
+            <th class="output-th">今回調剤量 (調整後)</th>
+            <th class="output-th">本人残</th>
+            <th class="output-th">薬局残</th>
+            <th>削除</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <button class="btn-add" onclick="addRow('', '', '', '')">＋ 行を追加</button>
+  </div>
+  <button class="btn-large-reset" onclick="resetAll()">🔄 次の方（全クリア）</button>
+
+  <script>
+    function parseNum(val) {
+      if (!val) return 0;
+      let normalized = val.toString().replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xfee0));
+      let match = normalized.match(/[\d.]+/);
+      return match ? parseFloat(match[0]) : 0;
+    }
+    function addRow(name = '', dose = '', brought = '', days = '') {
+      const tbody = document.getElementById('tableBody');
+      const rowCount = tbody.children.length;
+      const defaultDays = document.getElementById('defaultDays').value || '14';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${rowCount + 1}</td>
+        <td class="text-left"><input type="text" value="${name}"></td>
+        <td><input type="text" class="in-dose" value="${dose}" oninput="calculateRow(this.closest('tr'))"></td>
+        <td><input type="text" class="in-brought" value="${brought}" oninput="calculateRow(this.closest('tr'))"></td>
+        <td><input type="text" class="in-days" value="${days !== '' ? days : defaultDays}" oninput="calculateRow(this.closest('tr'))"></td>
+        <td class="res-text res-convert">-</td>
+        <td class="res-text res-dispense">-</td>
+        <td class="res-text res-patient">-</td>
+        <td class="res-text res-pharmacy">-</td>
+        <td><button class="btn-del" onclick="deleteRow(this.closest('tr'))">✕</button></td>
+      `;
+      tbody.appendChild(tr);
+      calculateRow(tr);
+    }
+    function calculateRow(tr) {
+      const dose = parseNum(tr.querySelector('.in-dose').value);
+      const brought = parseNum(tr.querySelector('.in-brought').value);
+      const days = parseNum(tr.querySelector('.in-days').value);
+      if (dose <= 0) return;
+      const broughtDays = Math.floor(brought / dose);
+      const remTabs = Math.round((brought - (broughtDays * dose)) * 100) / 100;
+      tr.querySelector('.res-convert').innerText = broughtDays > 0 ? `${broughtDays}日分${remTabs > 0 ? ' ＋ '+remTabs+'錠' : ''}` : `${remTabs}錠`;
+      const adjDays = Math.max(0, days - broughtDays);
+      const dispenseQty = Math.round((adjDays * dose) * 100) / 100;
+      tr.querySelector('.res-dispense').innerHTML = `<b>${adjDays}日分</b> (${dispenseQty}錠)`;
+      tr.querySelector('.res-patient').innerText = `${remTabs}錠`;
+      tr.querySelector('.res-pharmacy').innerText = `${Math.round((Math.ceil(dispenseQty) - dispenseQty) * 100) / 100}錠`;
+    }
+    function deleteRow(tr) { tr.remove(); }
+    function applyDefaultDays() {
+      const d = document.getElementById('defaultDays').value;
+      document.querySelectorAll('#tableBody tr').forEach(tr => { tr.querySelector('.in-days').value = d; calculateRow(tr); });
+    }
+    function resetAll() { document.getElementById('tableBody').innerHTML = ''; addRow('', '', '', ''); addRow('', '', '', ''); }
+    window.onload = function() { addRow('ワソラン', '5', '23', '14'); addRow('アマリール(1)', '2', '19', '14'); };
+  </script>
+</body>
+</html>
