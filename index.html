@@ -104,13 +104,47 @@
     }
     input[type="text"] { text-align: left; }
     .val-blue { color: #2b6cb0; font-weight: bold; }
+    
+    .action-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 15px;
+      align-items: center;
+    }
     .btn-add {
       background: var(--secondary-color);
       color: white;
       border: none;
       padding: 8px 16px;
       border-radius: 4px;
-      margin-top: 10px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-export {
+      background: #319795;
+      color: white;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-copy {
+      background: #805ad5;
+      color: white;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-memo {
+      background: #2d3748;
+      color: white;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 4px;
       cursor: pointer;
       font-weight: bold;
     }
@@ -133,6 +167,17 @@
       font-size: 1.1rem;
       font-weight: bold;
       cursor: pointer;
+    }
+
+    /* 印刷時の専用スタイル */
+    @media print {
+      body { background: white; padding: 0; }
+      .container { box-shadow: none; padding: 0; max-width: 100%; }
+      .header, .action-toolbar, .btn-clear-bottom, .btn-delete { display: none !important; }
+      th:last-child, td:last-child { display: none !important; }
+      input { border: none !important; background: transparent !important; }
+      .global-inputs { border: none; background: transparent; padding: 0; margin-bottom: 10px; }
+      .global-inputs input { border: 1px solid #ccc !important; }
     }
   </style>
 </head>
@@ -167,7 +212,7 @@
           <th>持参換算</th>
           <th>今回調剤量(調整後)</th>
           <th style="background:#e6fffa;">セット後残り<br>(預かり/保管分)</th>
-          <th style="width:40px;">削除</th>
+          <th style="width:40px;" class="no-print">削除</th>
         </tr>
       </thead>
       <tbody id="medicineTable">
@@ -175,7 +220,13 @@
     </table>
   </div>
 
-  <button class="btn-add" onclick="addRow()">+ 行を追加</button>
+  <div class="action-toolbar">
+    <button class="btn-add" onclick="addRow()">+ 行を追加</button>
+    <button class="btn-export" onclick="window.print()">🖨️ 印刷 / PDF保存</button>
+    <button class="btn-copy" onclick="copyToClipboard()">📋 クリップボードにコピー</button>
+    <button class="btn-memo" onclick="exportTXT()">📝 メモ帳用に保存 (.txt)</button>
+  </div>
+
   <button class="btn-clear-bottom" onclick="clearAll()">🔄 次の方（全クリア）</button>
 </div>
 
@@ -199,7 +250,7 @@
       <td class="converted-days">-</td>
       <td class="dispense-amount val-blue">-</td>
       <td class="after-set-rem val-blue" style="background:#f0fff4;">-</td>
-      <td><button class="btn-delete" onclick="deleteRow(${rowCount})">✕</button></td>
+      <td class="no-print"><button class="btn-delete" onclick="deleteRow(${rowCount})">✕</button></td>
     `;
     tbody.appendChild(tr);
     calculateRow(rowCount);
@@ -270,6 +321,80 @@
     rowCount = 0;
     addRow();
     addRow();
+  }
+
+  // テキスト作成用の共通処理
+  function generateSummaryText() {
+    const globalDays = document.getElementById('globalDays').value || 14;
+    const setDays = document.getElementById('globalSetDays').value || 0;
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    let text = `【残薬・端数計算メモ】 (${dateStr})\n`;
+    text += `予定処方日数: ${globalDays}日分 / カレンダーセット: ${setDays}日分\n`;
+    text += `----------------------------------------\n`;
+
+    const rows = document.querySelectorAll('#medicineTable tr');
+    let count = 0;
+
+    rows.forEach(row => {
+      const name = row.querySelector('input[type="text"]').value || `(無題)`;
+      const daily = row.querySelector('.daily-dose').value;
+      const current = row.querySelector('.current-stock').value;
+      const target = row.querySelector('.target-days').value;
+      const conv = row.querySelector('.converted-days').innerText;
+      const dispense = row.querySelector('.dispense-amount').innerText;
+      const afterSet = row.querySelector('.after-set-rem').innerText;
+
+      if (daily) {
+        count++;
+        text += `${count}. ${name} (1日${daily}錠)\n`;
+        text += `   持参残薬: ${current}錠 (${conv})\n`;
+        text += `   予定日数: ${target}日分 ➔ 今回調剤量: ${dispense}\n`;
+        text += `   セット後残り: ${afterSet}\n\n`;
+      }
+    });
+
+    return { text, count };
+  }
+
+  // クリップボードへコピー機能
+  function copyToClipboard() {
+    const { text, count } = generateSummaryText();
+
+    if (count === 0) {
+      alert('コピーするデータがありません。');
+      return;
+    }
+
+    navigator.clipboard.writeText(text).then(() => {
+      alert('計算結果をコピーしました！\n薬歴やレポート等にそのまま貼り付けできます。');
+    }).catch(err => {
+      alert('コピーに失敗しました。');
+    });
+  }
+
+  // メモ帳 (.txt) ファイルダウンロード機能
+  function exportTXT() {
+    const { text, count } = generateSummaryText();
+
+    if (count === 0) {
+      alert('保存するデータがありません。');
+      return;
+    }
+
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    
+    const today = new Date().toISOString().slice(0, 10);
+    a.download = `残薬メモ_${today}.txt`;
+    
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   // 初期ロード時
