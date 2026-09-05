@@ -82,7 +82,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 900px;
+      min-width: 800px;
       font-size: 0.9rem;
     }
     th, td {
@@ -104,8 +104,6 @@
     }
     input[type="text"] { text-align: left; }
     .val-blue { color: #2b6cb0; font-weight: bold; }
-    .val-green { color: #2f855a; font-weight: bold; }
-    .val-orange { color: #dd6b20; font-weight: bold; }
     .btn-add {
       background: var(--secondary-color);
       color: white;
@@ -168,8 +166,6 @@
           <th style="width:70px;">予定日数</th>
           <th>持参換算</th>
           <th>今回調剤量(調整後)</th>
-          <th>本人残</th>
-          <th>薬局残</th>
           <th style="background:#e6fffa;">セット後残り<br>(預かり/保管分)</th>
           <th style="width:40px;">削除</th>
         </tr>
@@ -202,13 +198,16 @@
       <td><input type="number" class="target-days" value="${globalDays}" oninput="calculateRow(${rowCount})"></td>
       <td class="converted-days">-</td>
       <td class="dispense-amount val-blue">-</td>
-      <td class="patient-rem val-green">-</td>
-      <td class="pharmacy-rem val-orange">-</td>
       <td class="after-set-rem val-blue" style="background:#f0fff4;">-</td>
       <td><button class="btn-delete" onclick="deleteRow(${rowCount})">✕</button></td>
     `;
     tbody.appendChild(tr);
     calculateRow(rowCount);
+  }
+
+  function deleteRow(id) {
+    const row = document.getElementById(`row-${id}`);
+    if (row) row.remove();
   }
 
   function calculateRow(id) {
@@ -223,8 +222,6 @@
     if (dailyDose <= 0) {
       row.querySelector('.converted-days').innerText = '-';
       row.querySelector('.dispense-amount').innerText = '-';
-      row.querySelector('.patient-rem').innerText = '-';
-      row.querySelector('.pharmacy-rem').innerText = '-';
       row.querySelector('.after-set-rem').innerText = '-';
       return;
     }
@@ -238,10 +235,6 @@
     const neededDays = Math.max(0, targetDays - convDays);
     const dispenseTablets = neededDays * dailyDose;
     row.querySelector('.dispense-amount').innerText = `${neededDays}日分 (${dispenseTablets}錠)`;
-
-    // 本人残・薬局残
-    row.querySelector('.patient-rem').innerText = `${convRem}錠`;
-    row.querySelector('.pharmacy-rem').innerText = `0錠`;
 
     // カレンダーセット後残り（持参残薬 ＋ 今回調剤量 - セット量）
     const totalStockAfterDispense = currentStock + dispenseTablets;
